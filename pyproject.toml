@@ -51,9 +51,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/wajee/queryguard"
-Repository = "https://github.com/wajee/queryguard"
-Issues = "https://github.com/wajee/queryguard/issues"
+Homepage = "https://github.com/WajeehAlamoudi/QueryGuard"
+Repository = "https://github.com/WajeehAlamoudi/QueryGuard"
+Issues = "https://github.com/WajeehAlamoudi/QueryGuard/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/queryguard"]
