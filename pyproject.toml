@@ -3,14 +3,14 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "queryguard"
+name = "queryguard-sql"
 version = "0.1.0"
 description = "SQL validation and policy enforcement for NL2SQL pipelines"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Wajee" }
+    { name = "WajeehAlamoudi", email = "wajeehalamoudi@outlook.com" }
 ]
 keywords = [
     "sql",
@@ -57,6 +57,7 @@ Issues = "https://github.com/WajeehAlamoudi/QueryGuard/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/queryguard"]
+artifacts = ["src/queryguard/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
