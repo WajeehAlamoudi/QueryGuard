@@ -51,7 +51,7 @@ config = GuardConfig(
 
 guard = QueryGuard(config)
 
-result = guard.check("SELECT * FROM users")
+result = guard.check("SELECT id FROM users")
 
 print(result.allowed)
 print(result.final_sql)
@@ -63,7 +63,7 @@ Output:
 
 ```python
 True
-"SELECT * FROM users LIMIT 100"
+"SELECT id FROM users LIMIT 100"
 ["users"]
 []
 ```
@@ -109,7 +109,7 @@ config = GuardConfig(
 | `allowed_tables` | `list[str] \| None` | `None` | Tables that may be queried. `None` means allow all tables unless blocked. |
 | `blocked_tables` | `list[str]` | `[]` | Tables that must always be blocked. This wins over `allowed_tables`. |
 | `read_only` | `bool` | `True` | Allows only read-only query types when enabled. |
-| `allow_select_star` | `bool` | `False` | Allows `SELECT *` when schema rules are active. |
+| `allow_select_star` | `bool` | `False` | Allows `SELECT *`. By default, `SELECT *` is blocked. |
 | `max_rows` | `int \| None` | `1000` | Adds or lowers row limits. `None` disables limit rewriting. |
 | `schema` | `dict[str, list[str]] \| None` | `None` | Known tables and allowed columns. |
 | `suggest_tables` | `bool` | `True` | Suggests similar known table names. |
@@ -127,13 +127,13 @@ GuardConfig(
 Allowed:
 
 ```sql
-SELECT * FROM users
+SELECT id FROM users
 ```
 
 Blocked:
 
 ```sql
-SELECT * FROM payments
+SELECT id FROM payments
 ```
 
 Schema-qualified table names are strict:
@@ -181,19 +181,25 @@ SELECT password_hash FROM users
 
 ### SELECT Star
 
-When `schema` is provided and `allow_select_star=False`, this is blocked:
+By default, `SELECT *` is blocked.
 
 ```sql
 SELECT * FROM users
 ```
 
-This remains allowed:
+To allow it, set:
+
+```pthon
+GuardConfig(
+    database_type="mysql",
+    allow_select_star=True,
+)
+```
+This remains allowed by default because it does not expose all columns:
 
 ```sql
 SELECT COUNT(*) FROM users
 ```
-
-If no schema is provided, `SELECT *` is allowed because no column policy is active.
 
 ### Suggestions
 
@@ -208,7 +214,7 @@ guard = QueryGuard(
     )
 )
 
-result = guard.check("SELECT * FROM usres")
+result = guard.check("SELECT id FROM usres")
 
 print(result.suggestions)
 ```
@@ -274,7 +280,7 @@ result.suggestions      # dict[str, list[str]]
 Example:
 
 ```python
-result = guard.check("SELECT * FROM users")
+result = guard.check("SELECT id FROM users")
 
 if result.allowed:
     db.execute(result.final_sql)
