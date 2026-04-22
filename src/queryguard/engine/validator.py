@@ -115,9 +115,6 @@ def validate_select_star(ast: exp.Expression, config: GuardConfig) -> list[str]:
     if config.allow_select_star:
         return []
 
-    if config.schema is None:
-        return []
-
     errors: list[str] = []
 
     for select in ast.find_all(exp.Select):
@@ -138,6 +135,19 @@ def validate_sql_structure(ast: exp.Expression) -> list[str]:
     for select in ast.find_all(exp.Select):
         if not select.expressions:
             errors.append("SELECT query must include at least one expression")
+            continue
+
+        from_clause = select.args.get("from_")
+
+        for expression in select.expressions:
+            is_star = False
+            if isinstance(expression, exp.Star):
+                is_star = True
+            if isinstance(expression, exp.Column) and isinstance(expression.this, exp.Star):
+                is_star = True
+
+            if is_star and from_clause is None:
+                errors.append("""SELECT * requires a FROM clause""")
 
     for insert in ast.find_all(exp.Insert):
         if insert.this is None:
@@ -154,14 +164,20 @@ def validate_sql_structure(ast: exp.Expression) -> list[str]:
     for limit in ast.find_all(exp.Limit):
         limit_expr = limit.args.get("expression")
 
-        if isinstance(limit_expr, exp.Literal):
-            try:
-                value = int(limit_expr.name)
-            except (TypeError, ValueError):
-                errors.append("LIMIT must be a positive integer")
-                continue
+        if limit_expr is None:
+            errors.append("LIMIT must include a value")
+            continue
 
-            if value <= 0:
-                errors.append("LIMIT must be a positive integer")
+        if not isinstance(limit_expr, exp.Literal):
+            continue
+
+        try:
+            value = int(limit_expr.name)
+        except (TypeError, ValueError):
+            errors.append("LIMIT must be a positive integer")
+            continue
+
+        if value <= 0:
+            errors.append("LIMIT must be a positive integer")
 
     return errors

@@ -193,7 +193,7 @@ def test_check_returns_guard_result():
 def test_select_query_is_allowed_by_default():
     guard = QueryGuard(GuardConfig(database_type="mysql"))
 
-    result = guard.check("SELECT * FROM users")
+    result = guard.check("SELECT id FROM users")
 
     assert result.allowed is True
     assert result.errors == []
@@ -202,33 +202,33 @@ def test_select_query_is_allowed_by_default():
 def test_final_sql_contains_limit_by_default():
     guard = QueryGuard(GuardConfig(database_type="mysql"))
 
-    result = guard.check("SELECT * FROM users")
+    result = guard.check("SELECT id FROM users")
 
-    assert result.final_sql == "SELECT * FROM users LIMIT 1000"
+    assert result.final_sql == "SELECT id FROM users LIMIT 1000"
 
 
 def test_max_rows_none_does_not_add_limit():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=None))
 
-    result = guard.check("SELECT * FROM users")
+    result = guard.check("SELECT id FROM users")
 
-    assert result.final_sql == "SELECT * FROM users"
+    assert result.final_sql == "SELECT id FROM users"
 
 
 def test_existing_safe_limit_is_kept():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=100))
 
-    result = guard.check("SELECT * FROM users LIMIT 50")
+    result = guard.check("SELECT id FROM users LIMIT 50")
 
-    assert result.final_sql == "SELECT * FROM users LIMIT 50"
+    assert result.final_sql == "SELECT id FROM users LIMIT 50"
 
 
 def test_existing_high_limit_is_lowered():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=100))
 
-    result = guard.check("SELECT * FROM users LIMIT 500")
+    result = guard.check("SELECT id FROM users LIMIT 500")
 
-    assert result.final_sql == "SELECT * FROM users LIMIT 100"
+    assert result.final_sql == "SELECT id FROM users LIMIT 100"
 
 
 def test_detected_tables_are_returned():
@@ -266,7 +266,7 @@ def test_check_many_returns_result_for_each_query():
 def test_is_safe_returns_true_for_allowed_query():
     guard = QueryGuard(GuardConfig(database_type="mysql"))
 
-    assert guard.is_safe("SELECT * FROM users") is True
+    assert guard.is_safe("SELECT id FROM users") is True
 
 
 def test_is_safe_returns_false_for_blocked_query():
@@ -280,9 +280,9 @@ def test_is_safe_returns_false_for_blocked_query():
 def test_rewrite_returns_final_sql():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=10))
 
-    sql = guard.rewrite("SELECT * FROM users")
+    sql = guard.rewrite("SELECT id FROM users")
 
-    assert sql == "SELECT * FROM users LIMIT 10"
+    assert sql == "SELECT id FROM users LIMIT 10"
 
 
 def test_rewrite_raises_for_blocked_query():
@@ -290,16 +290,16 @@ def test_rewrite_raises_for_blocked_query():
         GuardConfig(database_type="mysql", blocked_tables=["users"])
     )
 
-    with pytest.raises(ValueError):
-        guard.rewrite("SELECT * FROM users")
+    with pytest.raises(BlockedTableError):
+        guard.rewrite("SELECT id FROM users")
 
 
 def test_validate_returns_final_sql():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=10))
 
-    sql = guard.validate("SELECT * FROM users")
+    sql = guard.validate("SELECT id FROM users")
 
-    assert sql == "SELECT * FROM users LIMIT 10"
+    assert sql == "SELECT id FROM users LIMIT 10"
 
 
 def test_validate_raises_for_blocked_query():
@@ -320,8 +320,8 @@ def test_set_policy_replaces_config():
         GuardConfig(database_type="mysql", allowed_tables=["orders"])
     )
 
-    assert guard.is_safe("SELECT * FROM users") is False
-    assert guard.is_safe("SELECT * FROM orders") is True
+    assert guard.is_safe("SELECT id FROM users") is False
+    assert guard.is_safe("SELECT id FROM orders") is True
 
 
 # ---------------------------------------------------------------------
@@ -377,7 +377,7 @@ def test_allowed_tables_allows_known_table():
         GuardConfig(database_type="mysql", allowed_tables=["users"])
     )
 
-    result = guard.check("SELECT * FROM users")
+    result = guard.check("SELECT id FROM users")
 
     assert result.allowed is True
 
@@ -498,7 +498,7 @@ def test_explain_reports_blocked_query():
 def test_explain_reports_allowed_query():
     guard = QueryGuard(GuardConfig(database_type="mysql"))
 
-    explanation = guard.explain("SELECT * FROM users")
+    explanation = guard.explain("SELECT id FROM users")
 
     assert explanation == "Allowed: Query passed all policies."
 
@@ -667,13 +667,15 @@ def test_supported_dialects_can_create_config(database_type):
 def test_postgres_sql_is_rewritten_with_postgres_dialect():
     guard = QueryGuard(GuardConfig(database_type="postgres", max_rows=10))
 
-    result = guard.check("SELECT * FROM users")
+    result = guard.check("SELECT id FROM users")
 
-    assert result.final_sql == "SELECT * FROM users LIMIT 10"
+    assert result.final_sql == "SELECT id FROM users LIMIT 10"
 
 
 def test_tsql_top_query_parses_when_tsql_supported():
-    guard = QueryGuard(GuardConfig(database_type="tsql", max_rows=10))
+    guard = QueryGuard(
+        GuardConfig(database_type="tsql", max_rows=10, allow_select_star=True)
+    )
 
     result = guard.check("SELECT TOP 5 * FROM users")
 
@@ -683,10 +685,10 @@ def test_tsql_top_query_parses_when_tsql_supported():
 def test_multiple_safe_selects_are_allowed():
     guard = QueryGuard(GuardConfig(database_type="mysql", max_rows=10))
 
-    result = guard.check("SELECT * FROM users; SELECT * FROM orders")
+    result = guard.check("SELECT id FROM users; SELECT id FROM orders")
 
     assert result.allowed is True
-    assert result.final_sql == "SELECT * FROM users LIMIT 10; SELECT * FROM orders LIMIT 10"
+    assert result.final_sql == "SELECT id FROM users LIMIT 10; SELECT id FROM orders LIMIT 10"
     assert set(result.detected_tables) == {"users", "orders"}
 
 
@@ -746,12 +748,12 @@ def test_multiple_cte_aliases_are_not_reported_as_real_tables():
     result = guard.check(
         """
         WITH active_users AS (
-            SELECT * FROM users
+            SELECT id FROM users
         ),
         recent_orders AS (
-            SELECT * FROM orders
+            SELECT id, user_id FROM orders
         )
-        SELECT *
+        SELECT active_users.id, recent_orders.id
         FROM active_users
         JOIN recent_orders ON active_users.id = recent_orders.user_id
         """
@@ -817,7 +819,7 @@ def test_schema_qualified_table_allowed_by_full_name():
         )
     )
 
-    result = guard.check("SELECT * FROM analytics.users")
+    result = guard.check("SELECT id FROM analytics.users")
 
     assert result.allowed is True
     assert result.detected_tables == ["analytics.users"]
@@ -835,9 +837,9 @@ def test_cte_alias_is_not_reported_as_real_table():
     result = guard.check(
         """
         WITH active_users AS (
-            SELECT * FROM users
+            SELECT id FROM users
         )
-        SELECT * FROM active_users
+        SELECT id FROM active_users
         """
     )
 
@@ -1012,3 +1014,56 @@ def test_valid_constant_select_is_allowed():
     result = guard.check("SELECT 1")
 
     assert result.allowed is True
+
+
+def test_select_without_expressions_is_blocked():
+    guard = QueryGuard(GuardConfig(database_type="mysql"))
+
+    result = guard.check("SELECT FROM users")
+
+    assert result.allowed is False
+    assert "SELECT query must include at least one expression" in result.errors
+
+
+def test_select_star_without_from_is_blocked():
+    guard = QueryGuard(GuardConfig(database_type="mysql"))
+
+    result = guard.check("SELECT *")
+
+    assert result.allowed is False
+    assert "SELECT * requires a FROM clause" in result.errors
+
+
+def test_select_constant_is_allowed():
+    guard = QueryGuard(GuardConfig(database_type="mysql"))
+
+    result = guard.check("SELECT 1")
+
+    assert result.allowed is True
+
+
+def test_bad_select_inside_cte_is_blocked():
+    guard = QueryGuard(GuardConfig(database_type="mysql"))
+
+    result = guard.check(
+        """
+        WITH bad_query AS (
+            SELECT FROM users
+        )
+        SELECT * FROM bad_query
+        """
+    )
+
+    assert result.allowed is False
+    assert "SELECT query must include at least one expression" in result.errors
+
+
+def test_bad_select_inside_union_is_blocked():
+    guard = QueryGuard(GuardConfig(database_type="mysql"))
+
+    result = guard.check(
+        "SELECT id FROM users UNION SELECT FROM orders"
+    )
+
+    assert result.allowed is False
+    assert "SELECT query must include at least one expression" in result.errors

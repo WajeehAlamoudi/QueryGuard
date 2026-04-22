@@ -1,12 +1,7 @@
 from __future__ import annotations
 from .config import GuardConfig
 from .result import GuardResult
-from .exceptions import (
-    ReadOnlyViolation,
-    BlockedTableError,
-    TableNotAllowedError,
-    UnsafeSQLError,
-)
+from .exceptions import (UnsafeSQLError, raise_blocked_error)
 from .engine import parser, extractor, validator, rewriter, suggester
 
 
@@ -21,6 +16,12 @@ class QueryGuard:
         errors: list[str] = []
         warnings: list[str] = []
         detected_tables: list[str] = []
+
+        structure_errors: list[str] = []
+        readonly_errors: list[str] = []
+        table_errors: list[str] = []
+        column_errors: list[str] = []
+        star_errors: list[str] = []
 
         # 1. parse
         try:
@@ -37,36 +38,41 @@ class QueryGuard:
             return result
 
         for ast in asts:
+            # validate SQL structure
+            current_structure_errors = validator.validate_sql_structure(ast)
+            structure_errors.extend(current_structure_errors)
+            errors.extend(current_structure_errors)
 
-            # validate the SQL
-            structure_errors = validator.validate_sql_structure(ast)
-            errors.extend(structure_errors)
-
-            # 2. extract tables
+            # extract tables
             tables = extractor.extract_tables(ast)
             detected_tables.extend(tables)
 
-            # 3. validate readonly
-            readonly_errors = validator.validate_readonly(ast, self.config)
-            errors.extend(readonly_errors)
+            # validate readonly
+            current_readonly_errors = validator.validate_readonly(ast, self.config)
+            readonly_errors.extend(current_readonly_errors)
+            errors.extend(current_readonly_errors)
 
-            # 4. validate table access
-            table_errors = validator.validate_tables(tables, self.config)
-            errors.extend(table_errors)
+            # validate table access
+            current_table_errors = validator.validate_tables(tables, self.config)
+            table_errors.extend(current_table_errors)
+            errors.extend(current_table_errors)
 
             # validate schema columns
-            column_errors = validator.validate_columns(ast, self.config)
-            errors.extend(column_errors)
+            current_column_errors = validator.validate_columns(ast, self.config)
+            column_errors.extend(current_column_errors)
+            errors.extend(current_column_errors)
 
             # validate select star
-            star_errors = validator.validate_select_star(ast, self.config)
-            errors.extend(star_errors)
+            current_star_errors = validator.validate_select_star(ast, self.config)
+            star_errors.extend(current_star_errors)
+            errors.extend(current_star_errors)
 
         detected_tables = list(dict.fromkeys(detected_tables))
-        # 5. suggestions for unknown tables
+
+        # suggestions for unknown tables
         hints = suggester.suggest(detected_tables, self.config)
 
-        # 6. rewrite only if allowed
+        # rewrite only if allowed
         allowed = len(errors) == 0
         final_sql: str | None = None
 
@@ -88,13 +94,14 @@ class QueryGuard:
         )
 
         if raise_on_blocked and not allowed:
-            first_error = errors[0] if errors else "Query blocked"
-
-            if "read_only mode" in first_error:
-                raise ReadOnlyViolation(first_error)
-            if "blocked" in first_error:
-                raise BlockedTableError(first_error)
-            raise TableNotAllowedError(first_error)
+            raise_blocked_error(
+                structure_errors=structure_errors,
+                readonly_errors=readonly_errors,
+                table_errors=table_errors,
+                column_errors=column_errors,
+                star_errors=star_errors,
+                errors=errors,
+            )
 
         return result
 
@@ -107,9 +114,7 @@ class QueryGuard:
         return self.check(sql).allowed
 
     def rewrite(self, sql: str) -> str:
-        result = self.check(sql)
-        if not result.allowed:
-            raise ValueError("; ".join(result.errors))
+        result = self.check(sql, raise_on_blocked=True)
         return result.final_sql or sql
 
     def tables(self, sql: str) -> list[str]:
