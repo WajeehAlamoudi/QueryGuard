@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "queryguard-sql"
-version = "0.1.4"
+version = "0.1.5"
 description = "SQL validation and policy enforcement for NL2SQL pipelines"
 readme = "README.md"
 requires-python = ">=3.9"
